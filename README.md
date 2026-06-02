@@ -1,4 +1,4 @@
-@"
+
 # 🔴 VL Achados — Bot de Alertas Automáticos
 
 Bot Python que monitora cobranças e envia alertas automáticos via Telegram.
