@@ -27,8 +27,4 @@ Credenciais protegidas via .env — nunca expostas no repositório.
 
 ## Autor
 Gustavo Vieira — github.com/gvm7stack
-"@ | Out-File -FilePath README.md -Encoding ascii
 
-git add README.md
-git commit -m "fix: corrige README duplicado"
-git push
