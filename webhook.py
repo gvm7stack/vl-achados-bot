@@ -2,7 +2,7 @@ import os
 import requests
 import gspread
 from flask import Flask, request
-from datetime import date
+from datetime import date, datetime
 from dotenv import load_dotenv
 from google.oauth2.service_account import Credentials
 
@@ -19,7 +19,6 @@ def conectar_sheets():
         "https://spreadsheets.google.com/feeds",
         "https://www.googleapis.com/auth/drive"
     ]
-    # Railway: lê do env. Local: lê do arquivo
     creds_json = os.getenv("GOOGLE_CREDENTIALS")
     if creds_json:
         import tempfile
@@ -52,9 +51,13 @@ def verificar_agenda():
     atrasados = []; vencendo = []; em_dia = []
     for linha in dados[3:]:
         if not linha[0]: continue
-        nome  = linha[0]; prod  = linha[2]
-        vparc = linha[7]; rest  = linha[9]; status = linha[11]
-        info = f"• {nome} — {prod}\n  💰 Parcela: {vparc} | Restante: {rest}"
+        nome      = linha[0]
+        prod      = linha[2]
+        vparc     = linha[7]
+        rest      = linha[9]
+        venc_data = linha[9] if len(linha) > 9 else "—"
+        status    = linha[11]
+        info = f"• {nome} — {prod}\n  💰 Parcela: {vparc} | Restante: {rest} | 📅 {venc_data}"
         if "Atrasado" in str(status):         atrasados.append(info)
         elif "Vence em breve" in str(status): vencendo.append(info)
         elif "Em dia" in str(status):         em_dia.append(f"• {nome} — {prod}")
@@ -70,17 +73,54 @@ def verificar_emprestimos():
     atrasados = []; vencendo = []; em_dia = []; ativos = []
     for linha in dados[4:22]:
         if not linha[0]: continue
-        nome     = linha[0]; vparc = linha[6]
-        saldo    = linha[9]; status = linha[10]
+        nome     = linha[0]
+        vparc    = linha[6]
+        venc     = linha[8] if len(linha) > 8 else "—"
+        saldo    = linha[9]
+        status   = linha[10]
         situacao = linha[16] if len(linha) > 16 else ""
         if status == "Quitado": continue
-        info = f"• {nome}\n  💰 Parcela: {vparc} | Saldo: {saldo}"
+        info = f"• {nome}\n  💰 Parcela: {vparc} | Saldo: {saldo} | 📅 {venc}"
         if "Atrasado" in str(situacao):         atrasados.append(info)
         elif "Vence em breve" in str(situacao): vencendo.append(info)
-        elif "Em dia" in str(situacao):         em_dia.append(f"• {nome} | Saldo: {saldo}")
+        elif "Em dia" in str(situacao):         em_dia.append(f"• {nome} | Saldo: {saldo} | 📅 {venc}")
         if status == "Ativo":
             ativos.append(f"• {nome} | Dado: {linha[2]} | Receber: {linha[3]} | Saldo: {saldo}")
     return atrasados, vencendo, em_dia, ativos
+
+# ── LÊ VENCIMENTOS DE HOJE ────────────────────────────────
+def verificar_hoje():
+    hoje     = date.today()
+    cliente  = conectar_sheets()
+    planilha = cliente.open("SISTEMA VL")
+
+    # Agenda
+    aba   = planilha.worksheet("📅 Agenda Cobranças")
+    dados = aba.get_all_values()
+    agenda_hoje = []
+    for linha in dados[3:]:
+        if not linha[0]: continue
+        try:
+            venc = datetime.strptime(linha[9], "%d/%m/%Y").date()
+            if venc == hoje:
+                agenda_hoje.append(f"• {linha[0]} — {linha[2]}\n  💰 Parcela: {linha[7]}")
+        except:
+            continue
+
+    # Empréstimos
+    aba   = planilha.worksheet("💳 Empréstimos")
+    dados = aba.get_all_values()
+    emp_hoje = []
+    for linha in dados[4:22]:
+        if not linha[0]: continue
+        try:
+            venc = datetime.strptime(linha[8], "%d/%m/%Y").date()
+            if venc == hoje:
+                emp_hoje.append(f"• {linha[0]}\n  💰 Parcela: {linha[6]} | Saldo: {linha[9]}")
+        except:
+            continue
+
+    return agenda_hoje, emp_hoje
 
 # ── COMANDOS ──────────────────────────────────────────────
 def cmd_start(chat_id):
@@ -91,6 +131,7 @@ def cmd_start(chat_id):
         "📅 /agenda — Cobranças da planilha\n"
         "💳 /emprestimo — Status dos empréstimos\n"
         "💰 /resumo — Números gerais\n"
+        "🗓 /hoje — Vencimentos de hoje\n"
         "❓ /ajuda — Ver todos os comandos", chat_id)
 
 def cmd_relatorio(chat_id):
@@ -157,6 +198,19 @@ def cmd_resumo(chat_id):
     )
     enviar(msg, chat_id)
 
+def cmd_hoje(chat_id):
+    enviar("⏳ Verificando vencimentos de hoje...", chat_id)
+    agenda_hoje, emp_hoje = verificar_hoje()
+    hoje_str = date.today().strftime("%d/%m/%Y")
+    msg = f"🗓 <b>VENCIMENTOS HOJE — {hoje_str}</b>\n\n"
+    if agenda_hoje:
+        msg += f"📋 <b>Cobranças ({len(agenda_hoje)}):</b>\n" + "\n".join(agenda_hoje) + "\n\n"
+    if emp_hoje:
+        msg += f"💳 <b>Empréstimos ({len(emp_hoje)}):</b>\n" + "\n".join(emp_hoje) + "\n\n"
+    if not agenda_hoje and not emp_hoje:
+        msg += "✅ Nenhum vencimento hoje."
+    enviar(msg, chat_id)
+
 def cmd_ajuda(chat_id):
     enviar(
         "❓ <b>COMANDOS DISPONÍVEIS</b>\n\n"
@@ -165,6 +219,7 @@ def cmd_ajuda(chat_id):
         "/agenda — Cobranças da planilha\n"
         "/emprestimo — Status dos empréstimos\n"
         "/resumo — Números gerais\n"
+        "/hoje — Vencimentos de hoje\n"
         "/ajuda — Esta mensagem", chat_id)
 
 def processar(texto, chat_id):
@@ -174,6 +229,7 @@ def processar(texto, chat_id):
     elif t in ["/agenda","agenda"]:                       cmd_agenda(chat_id)
     elif t in ["/emprestimo","/empréstimo","emprestimo"]: cmd_emprestimo(chat_id)
     elif t in ["/resumo","resumo"]:                       cmd_resumo(chat_id)
+    elif t in ["/hoje","hoje"]:                           cmd_hoje(chat_id)
     elif t in ["/ajuda","/help","ajuda"]:                 cmd_ajuda(chat_id)
     else: enviar("❓ Comando não reconhecido. Digite /ajuda", chat_id)
 
