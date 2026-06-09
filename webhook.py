@@ -55,12 +55,12 @@ def verificar_agenda():
         prod      = linha[2]
         vparc     = linha[7]
         rest      = linha[9]
-        venc_data = linha[9] if len(linha) > 9 else "—"
-        status    = linha[11]
+        venc_data = linha[10] if len(linha) > 10 else "—"
+        status    = linha[12] if len(linha) > 12 else ""
         info = f"• {nome} — {prod}\n  💰 Parcela: {vparc} | Restante: {rest} | 📅 {venc_data}"
         if "Atrasado" in str(status):         atrasados.append(info)
         elif "Vence em breve" in str(status): vencendo.append(info)
-        elif "Em dia" in str(status):         em_dia.append(f"• {nome} — {prod}")
+        elif "Em dia" in str(status):         em_dia.append(f"• {nome} — {prod} | 📅 {venc_data}")
     return atrasados, vencendo, em_dia
 
 # ── LÊ EMPRÉSTIMOS ────────────────────────────────────────
@@ -101,7 +101,7 @@ def verificar_hoje():
     for linha in dados[3:]:
         if not linha[0]: continue
         try:
-            venc = datetime.strptime(linha[9], "%d/%m/%Y").date()
+            venc = datetime.strptime(linha[10], "%d/%m/%Y").date()
             if venc == hoje:
                 agenda_hoje.append(f"• {linha[0]} — {linha[2]}\n  💰 Parcela: {linha[7]}")
         except:
