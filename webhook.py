@@ -32,22 +32,18 @@ def conectar_sheets():
 # ── Converte serial do Excel para date ────────────────────
 def serial_para_date(valor):
     try:
-        # Tenta primeiro como string dd/mm/yyyy
         return datetime.strptime(str(valor), "%d/%m/%Y").date()
     except:
         pass
     try:
-        # Converte serial numérico do Excel
         serial = int(float(str(valor)))
-        return datetime(1899, 12, 30) + timedelta(days=serial)
+        return (datetime(1899, 12, 30) + timedelta(days=serial)).date()
     except:
         return None
 
 def formatar_data(valor):
     d = serial_para_date(valor)
-    if d:
-        return d.strftime("%d/%m/%Y")
-    return "—"
+    return d.strftime("%d/%m/%Y") if d else "—"
 
 # ── TELEGRAM ──────────────────────────────────────────────
 def enviar(texto, chat_id):
@@ -94,7 +90,7 @@ def verificar_emprestimos():
         if not linha[0]: continue
         nome     = linha[0]
         vparc    = linha[6]
-        venc     = formatar_data(linha[8]) if len(linha) > 8 else "—"
+        venc     = formatar_data(linha[14]) if len(linha) > 14 else "—"
         saldo    = linha[9]
         status   = linha[10]
         situacao = linha[16] if len(linha) > 16 else ""
@@ -120,7 +116,7 @@ def verificar_hoje():
     for linha in dados[3:]:
         if not linha[0]: continue
         venc = serial_para_date(linha[10]) if len(linha) > 10 else None
-        if venc and venc.date() == hoje if hasattr(venc, 'date') else venc == hoje:
+        if venc and venc == hoje:
             agenda_hoje.append(f"• {linha[0]} — {linha[2]}\n  💰 Parcela: {linha[7]}")
 
     # Empréstimos
@@ -129,8 +125,8 @@ def verificar_hoje():
     emp_hoje = []
     for linha in dados[4:22]:
         if not linha[0]: continue
-        venc = serial_para_date(linha[8]) if len(linha) > 8 else None
-        if venc and venc.date() == hoje if hasattr(venc, 'date') else venc == hoje:
+        venc = serial_para_date(linha[14]) if len(linha) > 14 else None
+        if venc and venc == hoje:
             emp_hoje.append(f"• {linha[0]}\n  💰 Parcela: {linha[6]} | Saldo: {linha[9]}")
 
     return agenda_hoje, emp_hoje
