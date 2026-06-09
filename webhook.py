@@ -2,7 +2,7 @@ import os
 import requests
 import gspread
 from flask import Flask, request
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from dotenv import load_dotenv
 from google.oauth2.service_account import Credentials
 
@@ -14,7 +14,6 @@ app = Flask(__name__)
 
 # ── GOOGLE SHEETS ─────────────────────────────────────────
 def conectar_sheets():
-    import json
     escopos = [
         "https://spreadsheets.google.com/feeds",
         "https://www.googleapis.com/auth/drive"
@@ -29,6 +28,26 @@ def conectar_sheets():
     else:
         credenciais = Credentials.from_service_account_file("credenciais.json", scopes=escopos)
     return gspread.authorize(credenciais)
+
+# ── Converte serial do Excel para date ────────────────────
+def serial_para_date(valor):
+    try:
+        # Tenta primeiro como string dd/mm/yyyy
+        return datetime.strptime(str(valor), "%d/%m/%Y").date()
+    except:
+        pass
+    try:
+        # Converte serial numérico do Excel
+        serial = int(float(str(valor)))
+        return datetime(1899, 12, 30) + timedelta(days=serial)
+    except:
+        return None
+
+def formatar_data(valor):
+    d = serial_para_date(valor)
+    if d:
+        return d.strftime("%d/%m/%Y")
+    return "—"
 
 # ── TELEGRAM ──────────────────────────────────────────────
 def enviar(texto, chat_id):
@@ -55,8 +74,8 @@ def verificar_agenda():
         prod      = linha[2]
         vparc     = linha[7]
         rest      = linha[9]
-        venc_data = linha[10] if len(linha) > 10 else "—"
-        status    = linha[12] if len(linha) > 12 else ""
+        venc_data = formatar_data(linha[10]) if len(linha) > 10 else "—"
+        status    = linha[11] if len(linha) > 11 else ""
         info = f"• {nome} — {prod}\n  💰 Parcela: {vparc} | Restante: {rest} | 📅 {venc_data}"
         if "Atrasado" in str(status):         atrasados.append(info)
         elif "Vence em breve" in str(status): vencendo.append(info)
@@ -75,7 +94,7 @@ def verificar_emprestimos():
         if not linha[0]: continue
         nome     = linha[0]
         vparc    = linha[6]
-        venc     = linha[8] if len(linha) > 8 else "—"
+        venc     = formatar_data(linha[8]) if len(linha) > 8 else "—"
         saldo    = linha[9]
         status   = linha[10]
         situacao = linha[16] if len(linha) > 16 else ""
@@ -100,12 +119,9 @@ def verificar_hoje():
     agenda_hoje = []
     for linha in dados[3:]:
         if not linha[0]: continue
-        try:
-            venc = datetime.strptime(linha[10], "%d/%m/%Y").date()
-            if venc == hoje:
-                agenda_hoje.append(f"• {linha[0]} — {linha[2]}\n  💰 Parcela: {linha[7]}")
-        except:
-            continue
+        venc = serial_para_date(linha[10]) if len(linha) > 10 else None
+        if venc and venc.date() == hoje if hasattr(venc, 'date') else venc == hoje:
+            agenda_hoje.append(f"• {linha[0]} — {linha[2]}\n  💰 Parcela: {linha[7]}")
 
     # Empréstimos
     aba   = planilha.worksheet("💳 Empréstimos")
@@ -113,12 +129,9 @@ def verificar_hoje():
     emp_hoje = []
     for linha in dados[4:22]:
         if not linha[0]: continue
-        try:
-            venc = datetime.strptime(linha[8], "%d/%m/%Y").date()
-            if venc == hoje:
-                emp_hoje.append(f"• {linha[0]}\n  💰 Parcela: {linha[6]} | Saldo: {linha[9]}")
-        except:
-            continue
+        venc = serial_para_date(linha[8]) if len(linha) > 8 else None
+        if venc and venc.date() == hoje if hasattr(venc, 'date') else venc == hoje:
+            emp_hoje.append(f"• {linha[0]}\n  💰 Parcela: {linha[6]} | Saldo: {linha[9]}")
 
     return agenda_hoje, emp_hoje
 
